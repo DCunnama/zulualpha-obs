@@ -1,0 +1,38 @@
+flush ruleset
+table inet filter {
+  sets {
+    tenant_vlans { type ifname; flags interval; elements = { "eth0.101", "eth0.102" } }
+  }
+  chains {
+    input {
+      type filter hook input priority 0;
+      ct state {established, related} accept
+      iif lo accept
+      # WireGuard
+      udp dport {51820,51821} accept
+      # DHCP/DNS
+      udp dport {67,68,53} accept
+      tcp dport 53 accept
+      counter drop
+    }
+    forward {
+      type filter hook forward priority 0;
+      ct state established,related accept
+
+      # Staff VPN access
+      iif "wg-mgmt" oifname { "eth0.10", "eth0.200" } accept
+
+      # Tenant A VPN to VLAN101 only
+      iif "wg-tenantA" oif "eth0.101" accept
+
+      # Block east-west between tenant VLANs
+      iifname @tenant_vlans oifname @tenant_vlans drop
+
+      # Tenants -> Services (dashboards)
+      iif "eth0.101" oif "eth0.200" tcp dport {80,443,3000,3001,9090} accept
+
+      counter drop
+    }
+    output { type filter hook output priority 0; accept }
+  }
+}

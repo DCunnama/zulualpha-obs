@@ -1,0 +1,20 @@
+services:
+  grafana:
+    image: grafana/grafana
+    restart: unless-stopped
+    ports: ["10.10.200.1:3000:3000"]
+    volumes: ["grafana_data:/var/lib/grafana"]
+  prometheus:
+    image: prom/prometheus
+    restart: unless-stopped
+    ports: ["10.10.200.1:9090:9090"]
+    volumes: ["prom_data:/prometheus"]
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    ports: ["10.10.200.1:3001:3001"]
+    volumes: ["uptime_kuma:/app/data"]
+volumes:
+  grafana_data: {}
+  prom_data: {}
+  uptime_kuma: {}

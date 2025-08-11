@@ -1,0 +1,12 @@
+services:
+  netbox:
+    image: netboxcommunity/netbox:latest
+    restart: unless-stopped
+    ports: ["10.10.200.1:8000:8080"]
+    environment:
+      - SUPERUSER_EMAIL=<<<FILL>>>
+      - SUPERUSER_PASSWORD=<<<FILL>>>
+    volumes:
+      - netbox-data:/opt/netbox/netbox/media
+volumes:
+  netbox-data: {}

@@ -1,0 +1,2 @@
+- name: Placeholder for wireguard
+  debug: msg='Implement wireguard tasks'

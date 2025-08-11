@@ -1,0 +1,9 @@
+- name: Bring up ZuluAlpha lab networking
+  hosts: lab
+  become: true
+  roles:
+    - vlan-routing
+    - dnsmasq-dhcp
+    - wireguard
+    - nftables
+    - monitoring-agent

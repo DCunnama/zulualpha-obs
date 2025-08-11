@@ -1,0 +1,10 @@
+- name: Add a ZuluAlpha tenant
+  hosts: lab
+  become: true
+  vars:
+    tenant_id: "{{ lookup('env','TENANT_ID') | default('A') }}"
+    tenant_vlan: "{{ lookup('env','TENANT_VLAN') | default('101') }}"
+  roles:
+    - { role: wireguard, tags: ['wg'] }
+    - { role: dnsmasq-dhcp, tags: ['dhcp'] }
+    - { role: nftables, tags: ['acl'] }
