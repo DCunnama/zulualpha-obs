@@ -16,18 +16,22 @@ Built to run on a single Linux laptop first, then lifted into production hardwar
 ## Quick start (lab on a single Linux host)
 1. Install dependencies:
    ```bash
-   sudo apt update && sudo apt install -y wireguard nftables dnsmasq bridge-utils docker.io docker-compose-plugin
+   sudo bash scripts/install-deps.sh
    ```
-2. Review and fill secrets in `configs/wireguard/SECRETS.md`.
-3. Bring up VLANs/DHCP/VPN/ACLs:
+2. Run basic config sanity tests:
+   ```bash
+   bash tests/config-sanity.sh
+   ```
+3. Review and fill secrets in `configs/wireguard/SECRETS.md`.
+4. Bring up VLANs/DHCP/VPN/ACLs:
    ```bash
    sudo bash scripts/quicklab.sh
    ```
-4. Start monitoring stack:
+5. Start monitoring stack:
    ```bash
    docker compose -f infra/docker/compose.services.yml up -d
    ```
-5. Add a tenant:
+6. Add a tenant:
    ```bash
    sudo bash scripts/mk-tenant.sh A 101
    ```
