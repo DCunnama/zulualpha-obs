@@ -1,50 +1,70 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Detect mode: lab or k3s
+if kubectl get nodes &>/dev/null; then
+    MODE="k3s"
+else
+    MODE="lab"
+fi
+echo "[*] Running in $MODE mode"
+
+# Detect default interface if not set
+PHY_IF=${PHY_IF:-$(ip route | awk '/default/ {print $5; exit}')}
+echo "[*] Using physical interface: ${PHY_IF}"
+
 # VLANs and addresses
 declare -A VLAN_ADDR=(
-  [10]="10.10.10.1/24"
-  [101]="10.10.101.1/24"
-  [200]="10.10.200.1/24"
+  [10]="10.10.10.1/24"     # Mgmt
+  [200]="10.10.200.1/24"   # Services
 )
 
-PHY_IF=${PHY_IF:-eth0}
-
 echo "[*] Creating VLAN subinterfaces on ${PHY_IF}"
-for v in 10 101 200; do
-  sudo ip link add link ${PHY_IF} name ${PHY_IF}.${v} type vlan id ${v} || true
-  sudo ip addr add ${VLAN_ADDR[$v]} dev ${PHY_IF}.${v} || true
-  sudo ip link set ${PHY_IF}.${v} up
+for v in "${!VLAN_ADDR[@]}"; do
+  ip link add link ${PHY_IF} name ${PHY_IF}.${v} type vlan id ${v} 2>/dev/null || true
+  ip addr add ${VLAN_ADDR[$v]} dev ${PHY_IF}.${v} 2>/dev/null || true
+  ip link set ${PHY_IF}.${v} up
 done
 
 echo "[*] Enabling IP forwarding"
-sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null
-sudo sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null
+sysctl -w net.ipv4.ip_forward=1 >/dev/null
+sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null
 
-echo "[*] Installing dnsmasq configs"
-sudo mkdir -p /etc/dnsmasq.d
-sudo cp configs/dnsmasq/*.conf /etc/dnsmasq.d/
-sudo systemctl enable --now dnsmasq
+if [ "$MODE" = "lab" ]; then
+  echo "[*] Installing dnsmasq configs for lab DHCP"
+  mkdir -p /etc/dnsmasq.d
+  cp configs/dnsmasq/*.conf /etc/dnsmasq.d/ 2>/dev/null || true
+  systemctl enable --now dnsmasq || true
+fi
 
-echo "[*] Installing nftables rules"
-sudo cp configs/nftables/ruleset.nft /etc/nftables.conf
-sudo systemctl enable --now nftables
+echo "[*] Configuring nftables rules"
+if [ "$MODE" = "lab" ]; then
+  # Lab can own /etc/nftables.conf safely
+  cp configs/nftables/ruleset.nft /etc/nftables.conf
+  systemctl enable --now nftables || true
+else
+  # k3s mode: create our own table/chain/set without touching k3s iptables-nft
+  nft add table inet zobs 2>/dev/null || true
+  # set for tenant VLAN interfaces
+  nft list set inet zobs tenant_vlans >/dev/null 2>&1 || \
+    nft add set inet zobs tenant_vlans '{ type ifname; flags interval; }'
+  # forward chain with low priority (executes after kube rules)
+  nft list chain inet zobs forward >/dev/null 2>&1 || \
+    nft add chain inet zobs forward '{ type filter hook forward priority 100; policy accept; }'
+  # east-west isolation rule (idempotent)
+  nft list chain inet zobs forward | grep -q 'iifname @tenant_vlans oifname @tenant_vlans drop' || \
+    nft add rule inet zobs forward iifname @tenant_vlans oifname @tenant_vlans drop
+  echo "[*] k3s mode: nftables zobs table/chain/set ensured"
+fi
 
-echo "[*] Installing WireGuard configs"
-sudo mkdir -p /etc/wireguard
-for f in wg-mgmt.conf wg-tenantA.conf; do
-  if [[ -f configs/wireguard/$f ]]; then
-    sudo cp configs/wireguard/$f /etc/wireguard/$f
-    sudo wg-quick down /etc/wireguard/$f 2>/dev/null || true
-    sudo wg-quick up /etc/wireguard/$f
-  else
-    echo "[-] Missing configs/wireguard/$f (ok for first run)"
-  fi
-done
+echo "[*] Bringing up WireGuard (mgmt) if present"
+mkdir -p /etc/wireguard
+if [[ -f configs/wireguard/wg-mgmt.conf ]]; then
+  cp configs/wireguard/wg-mgmt.conf /etc/wireguard/wg-mgmt.conf
+  wg-quick down wg-mgmt 2>/dev/null || true
+  wg-quick up wg-mgmt
+else
+  echo "[-] Missing configs/wireguard/wg-mgmt.conf (ok if not generated yet)"
+fi
 
-echo "[*] (Optional) NAT for outbound internet"
-sudo nft list tables | grep -q '^table ip nat$' || sudo nft add table ip nat
-sudo nft list chains ip nat | grep -q '^chain postrouting' || sudo nft add chain ip nat postrouting '{ type nat hook postrouting priority 100 ; }'
-sudo nft list ruleset | grep -q 'masquerade' || sudo nft add rule ip nat postrouting oifname "${PHY_IF}" ip saddr 10.10.0.0/16 masquerade
-
-echo "[*] Lab bring-up complete."
+echo "[+] quicklab.sh complete."

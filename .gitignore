@@ -1,0 +1,5 @@
+# WireGuard secrets
+configs/wireguard/*privatekey
+configs/wireguard/*publickey
+configs/wireguard/peers/*.conf
+/etc/wireguard/*.conf
