@@ -1,0 +1,4 @@
+# One tenant per line: <TENANT_ID> <VLAN_ID>
+# Example tenants:
+A 101
+# B 102
